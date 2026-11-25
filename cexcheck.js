@@ -48,7 +48,7 @@
   $("dbg").onclick = function (e) {
     e.preventDefault();
     $("dbo").innerHTML = '<textarea readonly></textarea>';
-    $("dbo").firstChild.value = JSON.stringify(debug, null, 1).slice(0, 20000);
+    $("dbo").firstChild.value = JSON.stringify(debug, null, 1).slice(0, 60000);
   };
 
   function getJSON(url, opts) {
@@ -152,7 +152,7 @@
     return Promise.all(chunks.map(function (ch) {
       var body = { requests: ch.map(function (f) {
         return { indexName: settings.algoliaIndexName, query: f[0], hitsPerPage: 20, filters: filter,
-          attributesToRetrieve: ["boxId", "boxName", "categoryFriendlyName", "categoryName", "superCatFriendlyName", "sellPrice", "stores"] };
+          attributesToRetrieve: ["*"] };
       }) };
       return getJSON(url, { method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, body: JSON.stringify(body) })
         .then(function (j) {
@@ -203,10 +203,12 @@
       var failed = hitLists.filter(function (h) { return h === null; }).length;
       var sample = hitLists.filter(function (h) { return h && h.length; })[0];
       if (sample) debug.push({ hitSample: sample[0] });
-      var found = [];
+      var found = [], raw = [];
       FILMS.forEach(function (f, i) {
         matches(f, hitLists[i] || []).forEach(function (m) { m.film = f; found.push(m); });
+        if (raw.length < 6 && hitLists[i] && hitLists[i].length) raw.push({ film: f[0] + " (" + f[1] + ")", cex: hitLists[i].slice(0, 3) });
       });
+      debug.push({ rawRecords: raw });
       found.sort(function (a, b) {
         return (a.film[2] ? 1 : 0) - (b.film[2] ? 1 : 0) || String(a.film[0]).localeCompare(b.film[0]);
       });
