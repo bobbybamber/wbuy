@@ -30,7 +30,7 @@
     '#cexlc .chosen{font-weight:600;margin:6px 0}' +
     '#cexlc .r{display:block;padding:10px;border:1px solid #ddd;border-radius:8px;margin:6px 0;color:#111;text-decoration:none}' +
     '#cexlc .t{font-weight:600}#cexlc .tag{display:inline-block;font-size:12px;padding:1px 6px;border-radius:4px;margin-right:6px;color:#fff}' +
-    '#cexlc .W{background:#070}#cexlc .U{background:#036}#cexlc .p{float:right;font-weight:700}#cexlc .m{font-size:13px;color:#555}' +
+    '#cexlc .W{background:#070}#cexlc .U{background:#036}#cexlc .p{float:right;font-weight:700}#cexlc .m{font-size:13px;color:#555}#cexlc .rare{font-size:13px;color:#070;font-weight:700}' +
     '#cexlc textarea{width:100%;height:200px;font-size:11px}#cexlc a.dbg{font-size:13px;color:#555}</style>' +
     '<button class="x" id="cexlc-x">&times;</button><h2>My list checker</h2>' +
     '<input id="cexlc-q" type="search" placeholder="Type a store name, e.g. Southend" autocomplete="off">' +
@@ -204,7 +204,8 @@
       if (n !== t && n.indexOf(t + " ") !== 0) return;
       if (/season|series|box ?set|trilogy/i.test(name) && !/season|series/i.test(film[0])) return;
       var y = findYear(h) || +((name.match(/\b(19[2-9]\d|20[0-3]\d)\b/) || [])[1]) || null;
-      out.push({ id: h.boxId, name: name, fmt: fmt, cat: cat, price: h.sellPrice, cexYear: y });
+      out.push({ id: h.boxId, name: name, fmt: fmt, cat: cat, price: h.sellPrice, cexYear: y,
+        nStores: Array.isArray(h.stores) ? h.stores.length : null });
     });
     return out;
   }
@@ -260,7 +261,9 @@
         });
         found.forEach(function (c) { c.yearOk = !c.film[1] || !!c.cexYear; });
         found.sort(function (a, b) {
-          return (a.film[2] ? 1 : 0) - (b.film[2] ? 1 : 0) || String(a.film[0]).localeCompare(b.film[0]);
+          /* wanted before upgrades, then rarest first */
+          return (a.film[2] ? 1 : 0) - (b.film[2] ? 1 : 0) || (a.nStores == null ? 1e4 : a.nStores) - (b.nStores == null ? 1e4 : b.nStores) ||
+            String(a.film[0]).localeCompare(b.film[0]);
         });
         var dropped = cands.length - found.length;
         status((found.length ? store.storeName + ": " + found.length + " in stock" : "Nothing from your list in " + store.storeName + " right now.") +
@@ -274,7 +277,10 @@
             '<span class="t">' + esc(c.film[0]) + (c.film[1] ? " (" + c.film[1] + ")" : "") + "</span><br>" +
             '<span class="m">' + c.fmt + (up ? " · you own: " + esc(c.film[2]) : "") +
             (c.yearOk ? "" : " · no year on CeX, check it's the right version") + " · " + esc(c.film[4]) + "<br>" + esc(c.name) +
-            (c.cexYear ? " · " + c.cexYear : "") + "</span></a>";
+            (c.cexYear ? " · " + c.cexYear : "") + "</span>" +
+            (c.nStores != null ? '<br><span class="' + (c.nStores <= 10 ? "rare" : "m") + '">' +
+              (c.nStores <= 1 ? "Only this store has it" : "In " + c.nStores + " stores" + (c.nStores <= 10 ? " · rare" : "")) + "</span>" : "") +
+            "</a>";
         }).join("");
       });
     }).catch(function (e) {
