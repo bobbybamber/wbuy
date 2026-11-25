@@ -30,7 +30,7 @@
     '#cexlc .chosen{font-weight:600;margin:6px 0}' +
     '#cexlc .r{display:block;padding:10px;border:1px solid #ddd;border-radius:8px;margin:6px 0;color:#111;text-decoration:none}' +
     '#cexlc .t{font-weight:600}#cexlc .tag{display:inline-block;font-size:12px;padding:1px 6px;border-radius:4px;margin-right:6px;color:#fff}' +
-    '#cexlc .W{background:#070}#cexlc .U{background:#036}#cexlc .p{float:right;font-weight:700}#cexlc .m{font-size:13px;color:#555}#cexlc .rare{font-size:13px;color:#070;font-weight:700}' +
+    '#cexlc .W{background:#070}#cexlc .U{background:#036}#cexlc .p{float:right;font-weight:700}#cexlc .m{font-size:13px;color:#555}#cexlc .fBR,#cexlc .f4K{color:#fff;padding:0 5px;border-radius:4px;font-weight:700}#cexlc .fBR{background:#0057b8}#cexlc .f4K{background:#000}#cexlc .rare{font-size:13px;color:#070;font-weight:700}' +
     '#cexlc textarea{width:100%;height:200px;font-size:11px}#cexlc a.dbg{font-size:13px;color:#555}</style>' +
     '<button class="x" id="cexlc-x">&times;</button><h2>My list checker</h2>' +
     '<input id="cexlc-q" type="search" placeholder="Type a store name, e.g. Southend" autocomplete="off">' +
@@ -275,7 +275,7 @@
             '<span class="p">' + (c.price != null ? "£" + Number(c.price).toFixed(2) : "") + "</span>" +
             '<span class="tag ' + (up ? "U" : "W") + '">' + (up ? "UPGRADE" : "WANTED") + "</span>" +
             '<span class="t">' + esc(c.film[0]) + (c.film[1] ? " (" + c.film[1] + ")" : "") + "</span><br>" +
-            '<span class="m">' + c.fmt + (up ? " · you own: " + esc(c.film[2]) : "") +
+            '<span class="m">' + (c.fmt === "DVD" ? c.fmt : '<span class="f' + c.fmt + '">' + c.fmt + "</span>") + (up ? " · you own: " + esc(c.film[2]) : "") +
             (c.yearOk ? "" : " · no year on CeX, check it's the right version") + " · " + esc(c.film[4]) + "<br>" + esc(c.name) +
             (c.cexYear ? " · " + c.cexYear : "") + "</span>" +
             (c.nStores != null ? '<br><span class="' + (c.nStores <= 10 ? "rare" : "m") + '">' +
