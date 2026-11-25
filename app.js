@@ -168,9 +168,33 @@
     });
   }
 
-  /* Pick the CeX products that match a film and a wanted format. */
+  /* Find a 4-digit year in a CeX record: a "year"-named field, or a {name:"Year", value:...} pair. */
+  function findYear(o, depth) {
+    if (!o || typeof o !== "object" || (depth || 0) > 6) return null;
+    var yr = function (v) {
+      var m = String(Array.isArray(v) ? v.join(" ") : v).match(/\b(1[89]\d\d|20[0-4]\d)\b/);
+      return m ? +m[1] : null;
+    };
+    var keys = Object.keys(o), k, v, y;
+    for (var i = 0; i < keys.length; i++) {
+      k = keys[i]; v = o[k];
+      if (/^(year|releaseyear|release_year)$/i.test(k) && (y = yr(v))) return y;
+    }
+    var label = keys.filter(function (k) { return typeof o[k] === "string" && /^year$/i.test(o[k].trim()); })[0];
+    if (label) {
+      for (i = 0; i < keys.length; i++) {
+        if (keys[i] !== label && /value/i.test(keys[i]) && (y = yr(o[keys[i]]))) return y;
+      }
+    }
+    for (i = 0; i < keys.length; i++) {
+      if (o[keys[i]] && typeof o[keys[i]] === "object" && (y = findYear(o[keys[i]], (depth || 0) + 1))) return y;
+    }
+    return null;
+  }
+
+  /* CeX products matching a film's title and a wanted format (year is checked afterwards). */
   function matches(film, hits) {
-    var t = norm(film[0]), yr = film[1], out = [];
+    var t = norm(film[0]), out = [];
     hits.forEach(function (h) {
       var name = h.boxName || "";
       var cat = h.categoryFriendlyName || h.categoryName || "";
@@ -179,11 +203,24 @@
       var n = norm(name);
       if (n !== t && n.indexOf(t + " ") !== 0) return;
       if (/season|series|box ?set|trilogy/i.test(name) && !/season|series/i.test(film[0])) return;
-      var y = (name.match(/\b(19[2-9]\d|20[0-3]\d)\b/) || [])[1];
-      if (yr && y && Math.abs(+y - yr) > 1) return;
-      out.push({ id: h.boxId, name: name, fmt: fmt, cat: cat, price: h.sellPrice, yearOk: !!(yr && y) || !yr });
+      var y = findYear(h) || +((name.match(/\b(19[2-9]\d|20[0-3]\d)\b/) || [])[1]) || null;
+      out.push({ id: h.boxId, name: name, fmt: fmt, cat: cat, price: h.sellPrice, cexYear: y });
     });
     return out;
+  }
+
+  /* Year from the product's details page data, cached on the phone (it never changes). */
+  var YC = "cexListChecker.years", yearCache = {};
+  try { yearCache = JSON.parse(localStorage.getItem(YC) || "{}"); } catch (e) {}
+  function detailYear(id) {
+    if (yearCache[id] !== undefined) return Promise.resolve(yearCache[id]);
+    return getJSON(API + "/boxes/" + encodeURIComponent(id) + "/detail").then(function (j) {
+      var y = findYear(j);
+      if (!y && debug.filter(function (d) { return d.detailSample; }).length < 1) debug.push({ detailSample: JSON.stringify(j).slice(0, 4000) });
+      yearCache[id] = y;
+      try { localStorage.setItem(YC, JSON.stringify(yearCache)); } catch (e) {}
+      return y;
+    }, function (e) { debug.push({ detailErr: String(e) }); return null; });
   }
 
   /* ---------- Run ---------- */
@@ -203,30 +240,43 @@
       var failed = hitLists.filter(function (h) { return h === null; }).length;
       var sample = hitLists.filter(function (h) { return h && h.length; })[0];
       if (sample) debug.push({ hitSample: sample[0] });
-      var found = [], raw = [];
+      var cands = [], raw = [];
       FILMS.forEach(function (f, i) {
-        matches(f, hitLists[i] || []).forEach(function (m) { m.film = f; found.push(m); });
-        if (raw.length < 6 && hitLists[i] && hitLists[i].length) raw.push({ film: f[0] + " (" + f[1] + ")", cex: hitLists[i].slice(0, 3) });
+        matches(f, hitLists[i] || []).forEach(function (m) { m.film = f; cands.push(m); });
+        if (raw.length < 4 && hitLists[i] && hitLists[i].length) raw.push({ film: f[0] + " (" + f[1] + ")", cex: hitLists[i].slice(0, 2) });
       });
       debug.push({ rawRecords: raw });
-      found.sort(function (a, b) {
-        return (a.film[2] ? 1 : 0) - (b.film[2] ? 1 : 0) || String(a.film[0]).localeCompare(b.film[0]);
-      });
       if (failed === FILMS.length) {
         status("The search didn't work. Tap Show debug info below and send it to Claude.");
         return;
       }
-      status((found.length ? store.storeName + ": " + found.length + " in stock" : "Nothing from your list in " + store.storeName + " right now.") +
-        (failed ? " (" + failed + " films couldn't be checked; see debug info)" : ""));
-      $("out").innerHTML = found.map(function (c) {
-        var up = !!c.film[2];
-        return '<a class="r" href="/product-detail?id=' + encodeURIComponent(c.id) + '">' +
-          '<span class="p">' + (c.price != null ? "£" + Number(c.price).toFixed(2) : "") + "</span>" +
-          '<span class="tag ' + (up ? "U" : "W") + '">' + (up ? "UPGRADE" : "WANTED") + "</span>" +
-          '<span class="t">' + esc(c.film[0]) + (c.film[1] ? " (" + c.film[1] + ")" : "") + "</span><br>" +
-          '<span class="m">' + c.fmt + (up ? " · you own: " + esc(c.film[2]) : "") +
-          (c.yearOk ? "" : " · check it's the right version") + " · " + esc(c.film[4]) + "<br>" + esc(c.name) + "</span></a>";
-      }).join("");
+      var need = cands.filter(function (c) { return !c.cexYear && c.film[1]; });
+      if (need.length) status("Checking years for " + need.length + " products…");
+      return Promise.all(need.map(function (c) {
+        return detailYear(c.id).then(function (y) { c.cexYear = y; });
+      })).then(function () {
+        var found = cands.filter(function (c) {
+          return !(c.film[1] && c.cexYear && Math.abs(c.cexYear - c.film[1]) > 1);
+        });
+        found.forEach(function (c) { c.yearOk = !c.film[1] || !!c.cexYear; });
+        found.sort(function (a, b) {
+          return (a.film[2] ? 1 : 0) - (b.film[2] ? 1 : 0) || String(a.film[0]).localeCompare(b.film[0]);
+        });
+        var dropped = cands.length - found.length;
+        status((found.length ? store.storeName + ": " + found.length + " in stock" : "Nothing from your list in " + store.storeName + " right now.") +
+          (dropped ? " (" + dropped + " skipped: wrong year)" : "") +
+          (failed ? " (" + failed + " films couldn't be checked; see debug info)" : ""));
+        $("out").innerHTML = found.map(function (c) {
+          var up = !!c.film[2];
+          return '<a class="r" href="/product-detail?id=' + encodeURIComponent(c.id) + '">' +
+            '<span class="p">' + (c.price != null ? "£" + Number(c.price).toFixed(2) : "") + "</span>" +
+            '<span class="tag ' + (up ? "U" : "W") + '">' + (up ? "UPGRADE" : "WANTED") + "</span>" +
+            '<span class="t">' + esc(c.film[0]) + (c.film[1] ? " (" + c.film[1] + ")" : "") + "</span><br>" +
+            '<span class="m">' + c.fmt + (up ? " · you own: " + esc(c.film[2]) : "") +
+            (c.yearOk ? "" : " · no year on CeX, check it's the right version") + " · " + esc(c.film[4]) + "<br>" + esc(c.name) +
+            (c.cexYear ? " · " + c.cexYear : "") + "</span></a>";
+        }).join("");
+      });
     }).catch(function (e) {
       status("Something went wrong: " + e.message + " (see debug info)");
       debug.push({ runErr: String(e) });
